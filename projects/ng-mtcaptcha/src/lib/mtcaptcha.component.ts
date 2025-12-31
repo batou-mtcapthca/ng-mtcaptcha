@@ -30,7 +30,7 @@ export class MTCaptchaComponent implements AfterViewInit, OnDestroy {
 
   @Input() sitekey = "";
   @Input() theme?: string;
-  @Input() language?: string;
+  @Input() widgetSize: 'mini' | 'standard' = 'standard';
   @Input() customLangText?: Record<string, any> | string;
   @Input() customStyle?: Record<string, any> | string;
   
@@ -42,7 +42,6 @@ export class MTCaptchaComponent implements AfterViewInit, OnDestroy {
   @ViewChild('captchaContainer', { static: true }) captchaContainer!: ElementRef<HTMLDivElement>;
 
   captchaId: string;
-  private intervalId?: any;
   private subscriptions: Subscription[] = [];
 
   constructor(
@@ -78,15 +77,6 @@ export class MTCaptchaComponent implements AfterViewInit, OnDestroy {
     );
   }
 
-  private tokenListener = (e: any) => {
-    const token = e.detail;
-    if (!token) return;
-
-    this.zone.run(() => {
-      this.token.emit(token);
-    });
-  };
-
   ngAfterViewInit(): void {
     // Validate required input
     if (!this.sitekey) {
@@ -96,9 +86,23 @@ export class MTCaptchaComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
+    // Set up basic config BEFORE loading scripts (required by MTCaptcha)
+    const windowAny = window as any;
+    if (!windowAny.mtcaptchaConfig) {
+      windowAny.mtcaptchaConfig = {};
+    }
+    // Set sitekey and callbacks in config before scripts load
+    windowAny.mtcaptchaConfig.sitekey = this.sitekey;
+    windowAny.mtcaptchaConfig['rendered-callback'] = 'mt_renderedcb';
+    windowAny.mtcaptchaConfig['verified-callback'] = 'mt_verifiedcb';
+    windowAny.mtcaptchaConfig['verifyexpired-callback'] = 'mt_verifyexpiredcb';
+    windowAny.mtcaptchaConfig['error-callback'] = 'mt_errorcb';
+    if (!windowAny.mtcaptchaConfig.renderQueue) {
+      windowAny.mtcaptchaConfig.renderQueue = [];
+    }
+
     // Automatically load MTCaptcha script if not already loaded
-    // Pass language code if provided for efficient loading
-    this.mtcaptchaService.loadScript(this.language).subscribe({
+    this.mtcaptchaService.loadScript().subscribe({
       next: () => {
         // Script loaded, now configure and render captcha using explicit rendering
         this.renderCaptcha();
@@ -130,11 +134,13 @@ export class MTCaptchaComponent implements AfterViewInit, OnDestroy {
     // Set component-specific configuration
     const config: any = {
       sitekey: this.sitekey,
+      widgetSize: this.widgetSize,
+      // Set callbacks to use service callbacks
+      'rendered-callback': 'mt_renderedcb',
+      'verified-callback': 'mt_verifiedcb',
+      'verifyexpired-callback': 'mt_verifyexpiredcb',
+      'error-callback': 'mt_errorcb',
     };
-
-    if (this.language) {
-      config.lang = this.language;
-    }
 
     if (this.theme) {
       config.theme = this.theme;
@@ -160,8 +166,27 @@ export class MTCaptchaComponent implements AfterViewInit, OnDestroy {
       renderQueue: existingRenderQueue
     };
 
-    // Set up listeners for this specific captcha instance
-    this.setupListeners();
+    // Subscribe to verified callback for token (primary method)
+    this.subscriptions.push(
+      this.mtcaptchaService.verified$.subscribe((token) => {
+        if (token && typeof token === 'string') {
+          this.zone.run(() => {
+            this.token.emit(token);
+          });
+        }
+      })
+    );
+
+    // Also subscribe to token$ as fallback (for mtcaptcha-token event)
+    this.subscriptions.push(
+      this.mtcaptchaService.token$.subscribe((token) => {
+        if (token && typeof token === 'string') {
+          this.zone.run(() => {
+            this.token.emit(token);
+          });
+        }
+      })
+    );
 
     // Use explicit rendering - add this captcha's ID to render queue
     // This allows multiple captchas on the same page (critical for SPA)
@@ -184,34 +209,7 @@ export class MTCaptchaComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  private setupListeners(): void {
-    // Listen for v2-style event — safe fallback
-    window.addEventListener("mtcaptcha-token", this.tokenListener);
-
-    // Poll for v1 hidden field — required for v1
-    // Use component-specific selector to support multiple captchas
-    this.intervalId = setInterval(() => {
-      const container = document.getElementById(this.captchaId);
-      if (!container) return;
-
-      const el = container.querySelector<HTMLInputElement>(".mtcaptcha-verifiedtoken");
-      if (!el) return;
-
-      const value = el.value;
-      if (value && value.startsWith("v1(")) {
-        this.zone.run(() => {
-          this.token.emit(value);
-        });
-
-        clearInterval(this.intervalId);
-      }
-    }, 300);
-  }
-
   ngOnDestroy(): void {
-    window.removeEventListener("mtcaptcha-token", this.tokenListener);
-    if (this.intervalId) clearInterval(this.intervalId);
-    
     // Unsubscribe from all service observables
     this.subscriptions.forEach(sub => sub.unsubscribe());
     this.subscriptions = [];

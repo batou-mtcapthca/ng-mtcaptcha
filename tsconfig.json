@@ -9,7 +9,7 @@
     "noImplicitReturns": true,
     "paths": {
       "ng-mtcaptcha": [
-        "./dist/ng-mtcaptcha"
+        "./projects/ng-mtcaptcha/src/public-api.ts"
       ]
     },
     "noFallthroughCasesInSwitch": true,
@@ -33,6 +33,9 @@
     },
     {
       "path": "./projects/ng-mtcaptcha/tsconfig.spec.json"
+    },
+    {
+      "path": "./projects/demo/tsconfig.app.json"
     }
   ]
 }

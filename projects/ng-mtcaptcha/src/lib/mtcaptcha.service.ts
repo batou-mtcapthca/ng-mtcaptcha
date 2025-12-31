@@ -8,7 +8,8 @@ import { MTCaptchaOptions } from './mtcaptcha.types';
 })
 export class MTCaptchaService {
 
-  private readonly MTCAPTCHA_SCRIPT_URL = 'https://service.mtcaptcha.com/mtcaptcha.min.js';
+  private readonly MTCAPTCHA_SCRIPT_URL = 'https://service.mtcaptcha.com/mtcv1/client/mtcaptcha.min.js';
+  private readonly MTCAPTCHA_SCRIPT2_URL = 'https://service2.mtcaptcha.com/mtcv1/client/mtcaptcha2.min.js';
 
   /** Emits verified tokens to Angular components */
   private tokenSubject = new BehaviorSubject<string | null>(null);
@@ -34,7 +35,22 @@ export class MTCaptchaService {
     if (isPlatformBrowser(this.platformId)) {
       // Listen for global event
       window.addEventListener('mtcaptcha-token', (e: any) => {
-        this.tokenSubject.next(e.detail);
+        // Extract token string from event detail (could be string or object)
+        let token: string;
+        if (typeof e.detail === 'string') {
+          token = e.detail;
+        } else if (e.detail && typeof e.detail === 'object') {
+          token = e.detail.token || e.detail.value || e.detail.detail || e.detail.data || JSON.stringify(e.detail);
+          if (typeof token !== 'string') {
+            token = String(e.detail);
+          }
+        } else {
+          token = String(e.detail || '');
+        }
+        
+        if (token && token !== 'null' && token !== 'undefined') {
+          this.tokenSubject.next(token);
+        }
       });
 
       // Preload token if captcha solved before Angular boot
@@ -60,9 +76,27 @@ export class MTCaptchaService {
     };
 
     // Verified callback
-    windowAny.mt_verifiedcb = (token: string) => {
-      this.verifiedSubject.next(token);
-      this.tokenSubject.next(token);
+    windowAny.mt_verifiedcb = (token: any) => {
+      // Extract token string - could be string or object
+      let tokenString: string;
+      if (typeof token === 'string') {
+        tokenString = token;
+      } else if (token && typeof token === 'object') {
+        // If it's an object, try to extract the token
+        // Check common properties where token might be stored
+        tokenString = token.token || token.value || token.detail || token.data || JSON.stringify(token);
+        // If still an object, try to stringify it properly
+        if (typeof tokenString !== 'string') {
+          tokenString = String(token);
+        }
+      } else {
+        tokenString = String(token || '');
+      }
+      
+      if (tokenString && tokenString !== 'null' && tokenString !== 'undefined') {
+        this.verifiedSubject.next(tokenString);
+        this.tokenSubject.next(tokenString);
+      }
     };
 
     // Verify expired callback
@@ -102,12 +136,16 @@ export class MTCaptchaService {
 
     const config: any = {
       sitekey: options.sitekey,
-      lang: options.language || 'en',
     };
 
     // Add theme if provided (supports any theme value, not just 'light'|'dark')
     if (options.theme) {
       config.theme = options.theme;
+    }
+
+    // Add widgetSize if provided (default: 'standard')
+    if (options.widgetSize) {
+      config.widgetSize = options.widgetSize;
     }
 
     // Add custom language text if provided
@@ -148,19 +186,33 @@ export class MTCaptchaService {
 
   /**
    * Return latest token (sync)
+   * Returns the token if captcha is solved, null if not solved or expired
    */
   getVerifiedToken(): string | null {
     return this.tokenSubject.getValue();
   }
 
   /**
+   * Show mandatory error on captcha if not solved
+   * Call this when user tries to submit form without solving captcha
+   */
+  showMandatory(): void {
+    if (!isPlatformBrowser(this.platformId)) {
+      return;
+    }
+
+    const windowAny = window as any;
+    if (typeof windowAny.mtcaptcha !== 'undefined' && typeof windowAny.mtcaptcha.showMandatory === 'function') {
+      windowAny.mtcaptcha.showMandatory();
+    }
+  }
+
+  /**
    * Load the MTCaptcha script by appending a script element to the head element.
    * The script won't be loaded again if it has already been loaded.
    * Async and defer are set to prevent blocking the renderer while loading MTCaptcha.
-   * 
-   * @param languageCode Optional language code to append to script URL
    */
-  loadScript(languageCode?: string): Observable<void> {
+  loadScript(): Observable<void> {
     return new Observable<void>((observer: Subscriber<void>) => {
       // No window object (SSR)
       if (!isPlatformBrowser(this.platformId)) {
@@ -177,26 +229,60 @@ export class MTCaptchaService {
         return;
       }
 
-      // Build script URL with optional language parameter
-      let scriptUrl = this.MTCAPTCHA_SCRIPT_URL;
-      if (languageCode) {
-        const separator = scriptUrl.includes('?') ? '&' : '?';
-        scriptUrl += `${separator}lang=${languageCode}`;
-      }
+      // Build script URLs
+      const scriptUrl = this.MTCAPTCHA_SCRIPT_URL;
+      const script2Url = this.MTCAPTCHA_SCRIPT2_URL;
 
-      // Create and load script
+      let scriptsLoaded = 0;
+      const totalScripts = 2;
+      let hasError = false;
+
+      const checkComplete = () => {
+        if (hasError) return;
+        if (scriptsLoaded === totalScripts) {
+          console.log('All MTCaptcha scripts loaded successfully');
+          observer.next();
+          observer.complete();
+        }
+      };
+
+      const handleError = (url: string, e: any) => {
+        if (hasError) return;
+        hasError = true;
+        console.error('MTCaptcha script loading failed:', {
+          url: url,
+          error: e,
+        });
+        const error = new Error(`Failed to load MTCaptcha script from ${url}`);
+        (error as any).originalEvent = e;
+        observer.error(error);
+      };
+
+      // Load first script
       const script = document.createElement('script');
       script.src = scriptUrl;
       script.async = true;
       script.defer = true;
-
-      script.onerror = (e) => observer.error(e);
+      script.onerror = (e) => handleError(scriptUrl, e);
       script.onload = () => {
-        observer.next();
-        observer.complete();
+        scriptsLoaded++;
+        checkComplete();
       };
 
+      // Load second script
+      const script2 = document.createElement('script');
+      script2.src = script2Url;
+      script2.async = true;
+      script2.defer = true;
+      script2.onerror = (e) => handleError(script2Url, e);
+      script2.onload = () => {
+        scriptsLoaded++;
+        checkComplete();
+      };
+
+      console.log('Loading MTCaptcha scripts from:', scriptUrl, 'and', script2Url);
       document.head.appendChild(script);
+      document.head.appendChild(script2);
     });
   }
 }

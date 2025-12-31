@@ -93,6 +93,10 @@ export class AppModule { }
 | Input | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `sitekey` | `string` | Yes | `""` | Your MTCaptcha sitekey |
+| `theme` | `string` | No | - | Theme for the captcha widget |
+| `widgetSize` | `'mini' \| 'standard'` | No | `'standard'` | Size of the captcha widget |
+| `customLangText` | `Record<string, any> \| string` | No | - | Custom language text (JSON object or JSON string) |
+| `customStyle` | `Record<string, any> \| string` | No | - | Custom styling (JSON object or JSON string) |
 
 #### Outputs
 
@@ -147,7 +151,8 @@ export class ExampleComponent implements OnInit {
 
 #### Methods
 
-- `getVerifiedToken(): string | null` - Returns the current verified token synchronously
+- `getVerifiedToken(): string | null` - Returns the current verified token synchronously. Returns the token if captcha is solved, `null` if not solved or expired
+- `showMandatory(): void` - Shows mandatory error on captcha if not solved. Call this when user tries to submit form without solving captcha
 - `setGlobalConfig(options: MTCaptchaOptions): void` - Configure global MTCaptcha settings
 
 #### Observables
@@ -163,8 +168,8 @@ export class ExampleComponent implements OnInit {
 ```typescript
 interface MTCaptchaOptions {
   sitekey: string;
-  language?: string;
-  theme?: 'light' | 'dark';
+  theme?: string;                                  // Theme for the captcha widget (supports any theme value)
+  widgetSize?: 'mini' | 'standard';               // Widget size: 'mini' or 'standard' (default: 'standard')
   callbackName?: string;
   customLangText?: Record<string, any> | string;  // JSON object or JSON string
   customStyle?: Record<string, any> | string;       // JSON object or JSON string
@@ -196,8 +201,8 @@ export class AdvancedComponent implements OnInit, OnDestroy {
     // Configure with custom options
     this.mtcaptchaService.setGlobalConfig({
       sitekey: this.sitekey,
-      language: 'en',
       theme: 'light',
+      widgetSize: 'standard',
       customLangText: {
         // Custom language text
         'en': {
@@ -271,11 +276,12 @@ import { MTCaptchaComponent, MTCaptchaService } from 'ng-mtcaptcha';
       </div>
       
       <ng-mtcaptcha 
-        [sitekey]="sitekey" 
+        [sitekey]="sitekey"
+        [widgetSize]="'standard'"
         (token)="onCaptchaToken($event)">
       </ng-mtcaptcha>
       
-      <button type="submit" [disabled]="!captchaToken || loginForm.invalid">
+      <button type="submit" [disabled]="loginForm.invalid">
         Login
       </button>
     </form>
@@ -285,34 +291,76 @@ export class LoginComponent {
   email = '';
   password = '';
   sitekey = 'YOUR_MTCAPTCHA_SITEKEY';
-  captchaToken: string | null = null;
   
   constructor(private mtcaptchaService: MTCaptchaService) {}
   
   onCaptchaToken(token: string) {
-    this.captchaToken = token;
     console.log('Captcha verified with token:', token);
   }
   
   onSubmit() {
-    if (this.captchaToken) {
-      // Send form data and token to your backend
-      const loginData = {
-        email: this.email,
-        password: this.password,
-        captchaToken: this.captchaToken
-      };
-      
-      // Make API call to verify token and authenticate user
-      console.log('Submitting login:', loginData);
+    // Check if captcha is solved
+    const token = this.mtcaptchaService.getVerifiedToken();
+    
+    if (!token) {
+      // Show mandatory error if captcha not solved
+      this.mtcaptchaService.showMandatory();
+      return;
     }
+    
+    // Send form data and token to your backend
+    const loginData = {
+      email: this.email,
+      password: this.password,
+      captchaToken: token
+    };
+    
+    // Make API call to verify token and authenticate user
+    console.log('Submitting login:', loginData);
   }
 }
 ```
 
 ## Backend Verification
 
-After receiving the token from the component, you need to verify it on your backend:
+After receiving the token from the component, you need to verify it on your backend.
+
+### Using Node.js NPM Library (Recommended)
+
+For Node.js applications, use the official MTCaptcha Node.js library:
+
+```bash
+npm install mtcaptcha
+```
+
+```typescript
+import { MTCaptcha } from 'mtcaptcha';
+
+const mtcaptcha = new MTCaptcha(process.env.MTCAPTCHA_PRIVATE_KEY);
+
+app.post('/api/verify-captcha', async (req, res) => {
+  const { token } = req.body;
+  
+  try {
+    const result = await mtcaptcha.verify(token);
+    
+    if (result.success) {
+      // Token is valid, proceed with your logic
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ success: false, error: 'Invalid captcha' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Verification failed' });
+  }
+});
+```
+
+**NPM Package:** [mtcaptcha](https://www.npmjs.com/package/mtcaptcha)
+
+### Manual API Call
+
+Alternatively, you can verify the token manually:
 
 ```typescript
 // Example backend verification (Node.js/Express)
