@@ -11,6 +11,8 @@ import {
 
 @Component({
   selector: 'ng-mtcaptcha',
+  standalone: true,
+  imports: [],
   template: `
     <div
       class="mtcaptcha"
@@ -34,14 +36,11 @@ export class MTCaptchaComponent implements AfterViewInit, OnDestroy {
     if (!token) return;
 
     this.zone.run(() => {
-      console.log(" TOKEN from event (fallback):", token);
       this.token.emit(token);
     });
   };
 
   ngAfterViewInit(): void {
-    console.log("MTCaptcha initialized → watching for v1 token.");
-
     // Listen for v2-style event — safe fallback
     window.addEventListener("mtcaptcha-token", this.tokenListener);
 
@@ -52,8 +51,6 @@ export class MTCaptchaComponent implements AfterViewInit, OnDestroy {
 
       const value = el.value;
       if (value && value.startsWith("v1(")) {
-        console.log(" Angular detected v1 token:", value);
-
         this.zone.run(() => {
           this.token.emit(value);
         });

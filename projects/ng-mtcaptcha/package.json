@@ -1,6 +1,20 @@
 {
   "name": "ng-mtcaptcha",
-  "version": "0.0.1",
+  "version": "0.5.0",
+  "description": "Angular library for integrating MTCaptcha into Angular applications",
+  "keywords": [
+    "angular",
+    "mtcaptcha",
+    "captcha",
+    "angular-library",
+    "security",
+    "verification"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mtcaptcha-public/ngx-mtcaptcha"
+  },
   "peerDependencies": {
     "@angular/common": "^21.0.0",
     "@angular/core": "^21.0.0"
@@ -8,5 +22,12 @@
   "dependencies": {
     "tslib": "^2.3.0"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "files": [
+    "fesm2022",
+    "types",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ]
 }
