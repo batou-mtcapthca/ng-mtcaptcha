@@ -17,30 +17,9 @@ npm install ng-mtcaptcha
 
 ## Setup
 
-### 1. Load MTCaptcha Script
+The MTCaptcha script is **automatically loaded** by the plugin when you use the component. No manual script inclusion is required!
 
-Add the MTCaptcha script to your `index.html`:
-
-```html
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>MyApp</title>
-  <base href="/">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
-  
-  <!-- MTCaptcha Script -->
-  <script src="https://service.mtcaptcha.com/mtcaptcha.min.js" defer></script>
-</head>
-<body>
-  <app-root></app-root>
-</body>
-</html>
-```
-
-### 2. Import the Module
+### Import the Component
 
 In your Angular module or standalone component, import `MTCaptchaComponent`:
 
@@ -120,6 +99,9 @@ export class AppModule { }
 | Output | Type | Description |
 |--------|------|-------------|
 | `token` | `EventEmitter<string>` | Emits the verification token when captcha is solved |
+| `rendered` | `EventEmitter<void>` | Emits when captcha is rendered |
+| `expired` | `EventEmitter<void>` | Emits when captcha verification expires |
+| `error` | `EventEmitter<any>` | Emits when captcha encounters an error |
 
 ### Service Usage
 
